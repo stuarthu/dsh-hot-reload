@@ -33,6 +33,6 @@ Invariants worth preserving when editing:
 
 ## Releasing
 
-Publishing is fully automatic via npm Trusted Publishing (OIDC, no NPM_TOKEN). `.github/workflows/publish.yml` is triggered **only by pushing a `v*` tag** — pushes to `main` do not publish. The run fails loudly if the tag disagrees with `package.json`'s version, if the version is a prerelease (**stable releases only** — this project never publishes RCs), or if the registry check fails for any reason other than a confirmed E404; an already-published version is skipped. After publishing, a step re-points the `latest` dist-tag at the highest published version, since concurrent releases would otherwise leave `latest` on whichever finished last.
+Publishing is fully automatic via npm Trusted Publishing (OIDC, no NPM_TOKEN). `.github/workflows/publish.yml` is triggered **only by pushing a `v*` tag** — pushes to `main` do not publish. The run fails loudly if the tag disagrees with `package.json`'s version, if the version is a prerelease (**stable releases only** — this project never publishes RCs), or if the registry check fails for any reason other than a confirmed E404; an already-published version is skipped. Nothing runs after `npm publish` — if two releases are ever cut minutes apart and publish concurrently, `latest` can land on the lower version; fix that by hand with `npm dist-tag add`.
 
 To cut a release: bump `version` in `package.json`, add a `CHANGELOG.md` entry, commit, push, then push the matching `v<version>` tag. Keep `README.md` and `README.zh.md` in sync — both ship in the package.

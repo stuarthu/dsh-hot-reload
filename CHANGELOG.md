@@ -93,11 +93,11 @@ Two rounds of code-review fixes (engine + CI). No config or API changes.
   skipped the release). E404 is detected structurally via `--json` rather than
   by grepping npm's error prose.
 - Concurrency is keyed per tag, so distinct releases never share a queue slot
-  (a shared group could silently cancel a pending release's run). Because that
-  allows two releases to publish concurrently, a post-publish step re-points
-  `latest` at the highest published version — `npm publish` sets `latest`
-  unconditionally, so otherwise the run finishing last would win regardless of
-  version order.
+  (a shared group could silently cancel a pending release's run). Two releases
+  cut within a couple of minutes can therefore publish concurrently, leaving
+  the `latest` dist-tag on whichever finished last; releases are cut one at a
+  time and the repair is a single `npm dist-tag add`, so this is accepted
+  rather than automated.
 
 ## 0.1.3
 

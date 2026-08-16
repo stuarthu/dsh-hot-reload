@@ -15,6 +15,13 @@ name: Publish to npm
 # group could silently cancel a pending version's run) while re-pushing the
 # SAME tag still serializes against its own in-flight run.
 #
+# Accepted tradeoff: because distinct tags don't serialize, two releases pushed
+# within a couple of minutes can publish concurrently, and `npm publish` sets
+# the `latest` dist-tag unconditionally — so the run finishing last wins even if
+# it published the lower version. Releases are cut one at a time, and the repair
+# is a one-liner (`npm dist-tag add <pkg>@<version> latest`), so this is left to
+# a human rather than carried as a permanent post-publish step.
+#
 # One-time setup on npmjs.com (dsh-hot-reload → Settings → Trusted Publisher):
 #   Organization or user: stuarthu
 #   Repository:           dsh-hot-reload
@@ -105,27 +112,3 @@ jobs:
       - name: Publish
         if: steps.guard.outputs.publish == 'true'
         run: npm publish --provenance --access public
-
-      # Distinct tags run in distinct concurrency groups (so a queued release is
-      # never evicted), which means two releases CAN publish concurrently — and
-      # `npm publish` sets `latest` unconditionally, so the one finishing last
-      # wins regardless of which version is higher. Re-point `latest` at the
-      # highest published version instead of trying to prevent the race. This is
-      # idempotent: when latest is already correct it does nothing.
-      - name: Ensure latest points at the highest version
-        if: steps.guard.outputs.publish == 'true'
-        run: |
-          NAME=$(node -p "require('./package.json').name")
-          # One packument fetch supplies both the version list and the incumbent
-          # tag. `.flat()` normalizes the single-version case (npm returns a bare
-          # string); prereleases are filtered because a historical one must never
-          # be picked as latest, and numeric collation keeps 0.1.10 above 0.1.9.
-          PACKUMENT=$(npm view "$NAME" --json)
-          CURRENT=$(node -p 'JSON.parse(process.argv[1])["dist-tags"].latest' "$PACKUMENT")
-          HIGHEST=$(node -p '[JSON.parse(process.argv[1]).versions].flat().filter(v => !v.includes("-")).sort((a, b) => a.localeCompare(b, undefined, { numeric: true })).pop() ?? ""' "$PACKUMENT")
-          if [ -n "$HIGHEST" ] && [ "$HIGHEST" != "$CURRENT" ]; then
-            echo "latest is $CURRENT but $HIGHEST is higher — re-pointing."
-            npm dist-tag add "$NAME@$HIGHEST" latest
-          else
-            echo "latest ($CURRENT) is already the highest version."
-          fi
