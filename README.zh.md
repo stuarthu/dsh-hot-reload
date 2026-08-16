@@ -22,6 +22,17 @@ dsh 自带的热重载（`cordis-plugin-hmr`）刻意忽略 `node_modules`，所
   - 新代码在**初始化**阶段失败（新的 `apply` 抛错，**同步或异步**）会被回滚——
     旧版本就地重新实例化。
 
+  失败的版本**不会自动重试**——重试会在此后每次 lockfile 写入时再次拆除正在
+  正常工作的插件。请安装另一个版本，或重启 dsh，以加载新代码。
+
+有两种情况按设计不做重载：
+
+- **已禁用（disabled）的插件行会被静默跳过。** 已禁用的插件本就没在运行，没有
+  可替换的对象；重新启用时 dsh 自然会加载新代码。
+- **尚未挂上 fiber 的插件**（仍在导入中，或此前加载失败）会被报告为
+  `no live fiber to reload right now` 并原样保留。由于什么都没有被拆除，这种
+  情况**会**在下次 lockfile 变化时重新检查；若反复出现，请重启 dsh。
+
 它**绝不会替你重启 dsh**——重启交给你（以及你的守护进程，如果有的话）。
 
 ## 安装
@@ -41,11 +52,20 @@ dsh plugin --profile web add some-plugin@newer   # 自动热重载
 
 ## 兼容性
 
-基于并测试于 **dsh `0.1.0-rc.6`**（Node 22 / 24）。它会用到与 `cordis-plugin-hmr`
-共享的 cordis/loader 内部（`loader.internal.loadCache`、`registry.plugin`/
-`delete`、`fiber.entry`），因此未来若某个 dsh 版本改动了这些内部，可能需要更新
-本插件。它是失败安全的：一旦所需内部不可用，会退化为报告“需要重启”，而不会
-弄坏 dsh。
+基于并测试于 **dsh `0.1.0-rc.6`**（Node 22 / 24）。它会用到 cordis/loader 的内部
+接口——大多与 `cordis-plugin-hmr` 相同——因此未来若某个 dsh 版本改动了其中任何
+一项，可能需要更新本插件：
+
+| 内部接口 | 用途 |
+|---|---|
+| `loader.internal.loadCache` | 使 ESM 模块缓存失效 |
+| `loader.internal.resolve` / `resolveSync` | 把 specifier 解析为 URL（按 `internal.version` 分派） |
+| `registry.plugin` / `registry.delete` | 替换插件实例 |
+| `fiber.entry`、`fiber.runtime` | 把新插件重新挂到运行中的行上 |
+| `entry.disabled` | 跳过已禁用的行（继承式 getter） |
+| `entry.options.group` | 跳过 group 容器行 |
+
+它是失败安全的：一旦所需内部不可用，会退化为报告“需要重启”，而不会弄坏 dsh。
 
 ## 退出热重载（opt-out）
 
@@ -67,8 +87,8 @@ dsh plugin --profile web add some-plugin@newer   # 自动热重载
 
 ## 局限——务必阅读
 
-本插件是**乐观式**的，并非验证式。它尝试重载，且只在**抛出**错误时回退到
-“需要重启”。它**无法**检测*静默*泄漏：
+本插件是**乐观式**的，并非验证式。它尝试重载，且仅在**抛出**错误时（或没有可
+替换的活动 fiber 时）回退到“需要重启”。它**无法**检测*静默*泄漏：
 
 - 一个在 cordis 之外获取**裸资源**的插件——裸 `setInterval`、`net`/`http`
   服务器、`WebSocketServer`、`fs.watch`、`child_process`——**且没有用
@@ -79,11 +99,9 @@ dsh plugin --profile web add some-plugin@newer   # 自动热重载
   仅限于绕过 `ctx` 的插件。拿不准时，让这类插件设 `dsh.hotReload: false`。
 - 重载一个持有**活动连接**的插件（例如 WebSocket 桥接）会断开并重建这些连接；
   客户端需要重连。这是预期行为，不是错误。
-- 重载路径依赖 cordis/loader 内部（`loader.internal.loadCache`、
-  `registry.plugin`/`delete`、`fiber.entry`）——与 `cordis-plugin-hmr` 用的是同
-  一套。若这些内部不可用（既无 `--expose-internals`，也无
-  `node-addon-require-builtin` 原生插件），本插件会退化为对每次变化只报告
-  “需要重启”，而不做重载。
+- 重载路径依赖[兼容性](#兼容性)一节列出的 cordis/loader 内部接口。若这些内部
+  不可用（既无 `--expose-internals`，也无 `node-addon-require-builtin` 原生
+  插件），本插件会退化为对每次变化只报告“需要重启”，而不做重载。
 
 范围说明：本插件处理的是**已加载插件的升级**。安装一个**全新**插件是另一回事
 （把它的行加入 `cordis.patch.yml`，这个 dsh 本身已经会热应用）。

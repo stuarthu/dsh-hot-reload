@@ -1,14 +1,19 @@
 name: Publish to npm
 
 # Fully automatic publishing via npm Trusted Publishing (OIDC) — no NPM_TOKEN.
-# It runs on pushes to main AND on v* tags; whichever fires, it publishes only
-# if package.json's version isn't already on npm, else skips. Release either
-# way: bump "version", commit, push (optionally also push a matching tag).
 #
-# The `concurrency` group below serializes runs so that pushing a commit and its
-# tag together (two triggers, same version) can't race each other to publish and
-# collide with an E403 — the second run waits, then sees the version published
-# and skips.
+# Releases are cut by pushing a v* TAG, and only that. Plain pushes to main do
+# not publish. One tag = one run = one version, so two runs can never race to
+# publish the same version and collide with an E403 (which is what a push
+# trigger alongside the tag trigger made possible: two different SHAs both
+# carrying the same package.json version).
+#
+# Release flow: bump "version", commit, push, then push a matching v* tag.
+#
+# The `concurrency` group is keyed on the tag ref, so distinct releases never
+# share a queue slot (GitHub keeps only ONE pending run per group — a shared
+# group could silently cancel a pending version's run) while re-pushing the
+# SAME tag still serializes against its own in-flight run.
 #
 # One-time setup on npmjs.com (dsh-hot-reload → Settings → Trusted Publisher):
 #   Organization or user: stuarthu
@@ -21,11 +26,10 @@ name: Publish to npm
 
 on:
   push:
-    branches: [main]
-    tags: ["v*"] # releases can also be cut by pushing a version tag
+    tags: ["v*"] # tag pushes are the ONLY release trigger
 
 concurrency:
-  group: publish-npm
+  group: publish-npm-${{ github.ref }}
   cancel-in-progress: false # never cancel a publish mid-flight; queue instead
 
 jobs:
@@ -42,31 +46,58 @@ jobs:
           node-version: "24" # trusted publishing needs Node >= 22.14.0
           registry-url: "https://registry.npmjs.org"
 
-      - name: Ensure npm supports trusted publishing
-        run: npm install -g npm@latest # needs >= 11.5.1
-
       - name: Decide whether to publish
         id: guard
         run: |
           NAME=$(node -p "require('./package.json').name")
           VERSION=$(node -p "require('./package.json').version")
+          # The tag names the release now, so a tag that disagrees with
+          # package.json would publish a version nobody asked for, under a tag
+          # that then points at the wrong code. Fail loudly instead.
+          TAG="${GITHUB_REF_NAME#v}"
+          if [ "$TAG" != "$VERSION" ]; then
+            echo "::error::tag v$TAG does not match package.json version $VERSION — fix the bump or the tag, then re-tag."
+            exit 1
+          fi
+          # Stable releases only. A prerelease would be published under the
+          # `latest` dist-tag (npm ignores the suffix unless --tag is passed),
+          # so every plain `npm install` would pick up an RC.
+          case "$VERSION" in
+            *-*)
+              echo "::error::$VERSION is a prerelease — this project publishes stable versions only."
+              exit 1
+              ;;
+          esac
+          # --json makes failures machine-readable: npm prints {"error":{"code":...}}
+          # on stdout, so E404 is detected structurally instead of grepping prose
+          # (which breaks the day npm rewords its error output).
           set +e
-          OUT=$(npm view "$NAME@$VERSION" version 2>&1)
+          OUT=$(npm view "$NAME@$VERSION" version --json 2>stderr.txt)
           CODE=$?
           set -e
           if [ $CODE -eq 0 ] && [ -n "$OUT" ]; then
             echo "$NAME@$VERSION is already on npm — nothing to publish."
             echo "publish=false" >> "$GITHUB_OUTPUT"
-          elif printf '%s' "$OUT" | grep -q "E404"; then
+          elif node -e 'try { process.exit(JSON.parse(process.argv[1]).error.code === "E404" ? 0 : 1) } catch { process.exit(1) }' "$OUT"; then
             echo "$NAME@$VERSION not found (E404) — will publish."
             echo "publish=true" >> "$GITHUB_OUTPUT"
           else
-            # Non-404 failure (network / registry 5xx / auth): fail safe by NOT
-            # publishing, rather than guessing the version is new.
-            echo "npm view failed for a non-404 reason — skipping publish this run:"
+            # Non-404 failure (network / registry 5xx / auth): fail the RUN, loudly.
+            # A green skip here silently loses the release — there is no retry or
+            # workflow_dispatch, so a human must be able to see it and re-run.
+            echo "::error::npm view failed for a non-404 reason — failing so the release isn't silently skipped. Re-run this workflow once the registry recovers."
             printf '%s\n' "$OUT"
-            echo "publish=false" >> "$GITHUB_OUTPUT"
+            cat stderr.txt
+            exit 1
           fi
+
+      # Only the publish itself needs npm >= 11.5.1 (trusted publishing); the
+      # guard above works with the runner's preinstalled npm. Skipping it when
+      # the version is already on npm (re-pushed tag, manual re-run) avoids a
+      # pointless global npm upgrade.
+      - name: Ensure npm supports trusted publishing
+        if: steps.guard.outputs.publish == 'true'
+        run: npm install -g npm@latest # needs >= 11.5.1
 
       # No NODE_AUTH_TOKEN: the npm CLI authenticates via the OIDC credential
       # granted by `id-token: write`, verified against the trusted publisher
@@ -74,3 +105,27 @@ jobs:
       - name: Publish
         if: steps.guard.outputs.publish == 'true'
         run: npm publish --provenance --access public
+
+      # Distinct tags run in distinct concurrency groups (so a queued release is
+      # never evicted), which means two releases CAN publish concurrently — and
+      # `npm publish` sets `latest` unconditionally, so the one finishing last
+      # wins regardless of which version is higher. Re-point `latest` at the
+      # highest published version instead of trying to prevent the race. This is
+      # idempotent: when latest is already correct it does nothing.
+      - name: Ensure latest points at the highest version
+        if: steps.guard.outputs.publish == 'true'
+        run: |
+          NAME=$(node -p "require('./package.json').name")
+          # One packument fetch supplies both the version list and the incumbent
+          # tag. `.flat()` normalizes the single-version case (npm returns a bare
+          # string); prereleases are filtered because a historical one must never
+          # be picked as latest, and numeric collation keeps 0.1.10 above 0.1.9.
+          PACKUMENT=$(npm view "$NAME" --json)
+          CURRENT=$(node -p 'JSON.parse(process.argv[1])["dist-tags"].latest' "$PACKUMENT")
+          HIGHEST=$(node -p '[JSON.parse(process.argv[1]).versions].flat().filter(v => !v.includes("-")).sort((a, b) => a.localeCompare(b, undefined, { numeric: true })).pop() ?? ""' "$PACKUMENT")
+          if [ -n "$HIGHEST" ] && [ "$HIGHEST" != "$CURRENT" ]; then
+            echo "latest is $CURRENT but $HIGHEST is higher — re-pointing."
+            npm dist-tag add "$NAME@$HIGHEST" latest
+          else
+            echo "latest ($CURRENT) is already the highest version."
+          fi

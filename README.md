@@ -25,6 +25,20 @@ On a plugin package upgrade, for each affected plugin:
   - a failure while *initializing* it (the new `apply` throws, sync **or** async)
     is rolled back — the old version is re-instantiated in place.
 
+  A version that failed is **not retried automatically** — retrying would tear
+  down the working plugin again on every later lockfile write. Install a
+  different version, or restart dsh, to pick the new code up.
+
+Two cases produce no reload, by design:
+
+- **Disabled plugin rows are skipped silently.** A disabled plugin isn't
+  running, so there is nothing to swap — and re-enabling it makes dsh load the
+  new code anyway.
+- **A plugin that has no live fiber *yet*** (still importing, or it failed to
+  load earlier) is reported as `no live fiber to reload right now` and left
+  alone. Nothing was torn down, so this one *is* re-examined on the next
+  lockfile change — if it keeps repeating, restart dsh.
+
 It **never restarts dsh for you** — restarting is left to you (and your
 supervisor, if any).
 
@@ -47,11 +61,20 @@ the profile it's loaded into.
 ## Compatibility
 
 Built and tested against **dsh `0.1.0-rc.6`** (Node 22 / 24). It reaches into
-cordis/loader internals shared with `cordis-plugin-hmr`
-(`loader.internal.loadCache`, `registry.plugin`/`delete`, `fiber.entry`), so a
-future dsh that changes those may require an update. It fails safe: if the
-internals it needs are missing, it degrades to reporting "restart needed" rather
-than breaking dsh.
+cordis/loader internals — mostly the same ones `cordis-plugin-hmr` uses — so a
+future dsh that changes any of them may require an update:
+
+| Internal | Used for |
+|---|---|
+| `loader.internal.loadCache` | invalidating the ESM module cache |
+| `loader.internal.resolve` / `resolveSync` | resolving a specifier to a URL (dispatched on `internal.version`) |
+| `registry.plugin` / `registry.delete` | swapping the plugin instance |
+| `fiber.entry`, `fiber.runtime` | re-attaching the new plugin to the running rows |
+| `entry.disabled` | skipping disabled rows (inherited getter) |
+| `entry.options.group` | skipping group container rows |
+
+It fails safe: if the internals it needs are missing, it degrades to reporting
+"restart needed" rather than breaking dsh.
 
 ## Opting out
 
@@ -73,9 +96,9 @@ Set on the `hot-reload` row in your profile's `cordis.patch.yml`:
 
 ## Limitations — read this
 
-This plugin is **optimistic**, not verified. It attempts the reload and only
-falls back to "restart needed" on a **thrown** error. It does **not** detect
-*silent* leaks:
+This plugin is **optimistic**, not verified. It attempts the reload and falls
+back to "restart needed" only when something **throws** (or when there is no
+live fiber to swap). It does **not** detect *silent* leaks:
 
 - A plugin that acquires a **raw resource outside cordis** — a bare
   `setInterval`, a `net`/`http` server, a `WebSocketServer`, an `fs.watch`,
@@ -90,9 +113,8 @@ falls back to "restart needed" on a **thrown** error. It does **not** detect
 - Reloading a plugin that holds **live connections** (e.g. a WebSocket bridge)
   drops and re-establishes them; clients must reconnect. That's expected, not an
   error.
-- The reload path relies on cordis/loader internals
-  (`loader.internal.loadCache`, `registry.plugin`/`delete`, `fiber.entry`) — the
-  same ones `cordis-plugin-hmr` uses. If those internals are unavailable (no
+- The reload path relies on the cordis/loader internals listed under
+  [Compatibility](#compatibility). If they are unavailable (no
   `--expose-internals` and no `node-addon-require-builtin` addon), the plugin
   degrades to reporting "restart needed" for every change instead of reloading.
 

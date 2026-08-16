@@ -3,6 +3,102 @@
 All notable changes to `dsh-hot-reload` are documented here. This project
 follows [semantic versioning](https://semver.org/).
 
+## 0.1.4
+
+Two rounds of code-review fixes (engine + CI). No config or API changes.
+
+**Correct detection**
+
+- **One consistent view per cycle**: each cycle now enumerates loader entries
+  once and reads each `package.json` once (the sole exception being a deliberate
+  re-read at import time, which is what makes the committed version truthful),
+  and every decision uses that view. A
+  transient loader failure mid-cycle could previously make a detected upgrade
+  look like "not a loaded plugin", committing it as loaded while the old code
+  kept running — silently, forever.
+- **De-duplicate reloads by runtime, not specifier string** — aliased specifiers
+  (`pkg` vs `pkg/index.js`) resolving to one runtime no longer double-apply, and
+  one specifier mounted under two loader trees (two runtimes) now reloads both.
+- **Commit the version actually imported** — captured at import time inside the
+  reload, never re-read afterwards. A version that lands while a slow `apply()`
+  is still activating is therefore *not* recorded as loaded; it stays visible as
+  a change and is picked up on the next cycle, so the running code converges on
+  the newest version instead of silently stalling on an older one.
+- **Track by loader membership, not filesystem probes**: a package is dropped
+  when no loader entry is backed by it, not when a directory check fails. A
+  dangling pnpm symlink mid-swap can no longer evict a live plugin, and a
+  removed plugin row no longer stays tracked forever. A momentarily unreadable
+  `package.json` leaves the package tracked at its old version.
+- **Newly loaded rows are adopted, not reloaded** — dsh already loaded them.
+  A package whose `package.json` was unreadable at boot is tracked as
+  version-unknown rather than untracked, so its first readable version is
+  loaded instead of being mistaken for a fresh row and adopted silently.
+- **Disabled plugin rows are ignored**, using cordis's inherited `entry.disabled`
+  getter (an ancestor entry can disable a row, and the raw option may be a
+  `!!js` expression). Upgrading a disabled plugin no longer produces a spurious
+  "restart dsh" warning for something that isn't running. Group rows are skipped
+  too — they are containers, not plugin packages.
+- Degraded snapshots (`loader.entries()` throwing) leave state untouched; the
+  next event retries. If the loader is degraded at boot, the first successful
+  snapshot is simply adopted as the tracked state.
+
+**Honest reporting**
+
+- **A failed reload is never retried automatically.** Each attempt tears down
+  the working rolled-back plugin, and unrelated lockfile writes used to
+  re-trigger it indefinitely. One clear message says what to do (install a
+  different version, or restart dsh); later cycles stay quiet.
+- **No more false successes**: a changed package with no live fiber to reload
+  now warns and is *not* committed, instead of logging "hot-reloaded (0
+  module(s))". A package with a mix of live and fiberless entries reloads the
+  live ones and reports how many were skipped. An enabled row that simply has
+  no fiber *yet* (still importing) stays retryable — only a reload that was
+  attempted and failed is terminal.
+- **Explicit `profileDir` config always wins** — it is no longer silently
+  overridden by the auto-detected dir when its lockfile is missing.
+
+**Shutdown**
+
+- The disposer **never waits** on an in-flight reload, so dsh's shutdown can't
+  hang on an arbitrary plugin's `apply()`. A reload caught mid-activation by
+  teardown skips its rollback rather than re-registering fibers into a context
+  that is already tearing down — and if that activation *succeeds* after
+  teardown, the new plugin is dropped rather than left running (with its timers
+  and sockets live) past shutdown.
+- Lockfile churn during a long reload queues at most **one** follow-up cycle
+  instead of one per debounce window.
+
+**Docs**
+
+- `cordis.patch.yml` no longer advertises a **`reloadable` config key that was
+  never implemented** — a leftover from an abandoned opt-in design. The only
+  config keys are `debounce` and `profileDir`.
+- Corrected the "safe plugins are reloaded, unsafe ones are flagged" framing in
+  the package description and bundle patch: nothing judges a plugin's safety.
+  Every upgrade is attempted optimistically, a throw rolls back, and
+  `dsh.hotReload: false` is the only opt-out.
+- Both READMEs now document the disabled-row and not-yet-attached cases, and
+  list **every** cordis/loader internal the reload path depends on (previously
+  only three of six), which is what the Compatibility section is for.
+
+**CI**
+
+- Releases are now cut **only by pushing a `v*` tag**; pushes to `main` no
+  longer publish. One tag = one run = one version, which removes the E403 race
+  between the push- and tag-triggered runs of the same version.
+- The run **fails loudly** if the tag disagrees with `package.json`'s version,
+  if the version is a **prerelease** (this project publishes stable versions
+  only — an unflagged prerelease would land on the `latest` dist-tag), or if
+  `npm view` fails for a non-404 reason (previously a green run that silently
+  skipped the release). E404 is detected structurally via `--json` rather than
+  by grepping npm's error prose.
+- Concurrency is keyed per tag, so distinct releases never share a queue slot
+  (a shared group could silently cancel a pending release's run). Because that
+  allows two releases to publish concurrently, a post-publish step re-points
+  `latest` at the highest published version — `npm publish` sets `latest`
+  unconditionally, so otherwise the run finishing last would win regardless of
+  version order.
+
 ## 0.1.3
 
 Code-review fixes (engine + CI):
