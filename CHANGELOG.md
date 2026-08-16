@@ -3,6 +3,25 @@
 All notable changes to `dsh-hot-reload` are documented here. This project
 follows [semantic versioning](https://semver.org/).
 
+## 0.1.3
+
+Code-review fixes (engine + CI):
+
+- Reload each changed package **once per module**, not once per plugin row —
+  rows sharing a specifier share a runtime, so per-row reloading double-applied
+  and leaked a module instance.
+- **Serialize reload cycles** so a change arriving mid-reload can't run a second
+  cycle concurrently against the registry.
+- Commit the tracked version **only after a successful reload/skip**, so a failed
+  reload can be retried by re-installing the same version.
+- **Validate the profile dir** (warn if no `pnpm-lock.yaml`), and prefer a
+  candidate dir that actually contains the lockfile.
+- Disposer now awaits `watcher.close()` and guards against in-flight reloads via
+  a `disposed` flag.
+- CI: add a `concurrency` group so a commit+tag push can't race to publish
+  (E403); publish only on a confirmed `E404` (not on transient `npm view`
+  failures).
+
 ## 0.1.2
 
 - Docs: add a **Compatibility** section (built/tested against dsh `0.1.0-rc.6`;

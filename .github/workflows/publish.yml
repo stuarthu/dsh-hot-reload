@@ -1,10 +1,14 @@
 name: Publish to npm
 
 # Fully automatic publishing via npm Trusted Publishing (OIDC) — no NPM_TOKEN.
-# On every push to main, CI checks whether package.json's version is already on
-# npm; if not, it publishes. Releasing is just: bump "version", commit, push.
-# Re-running on an unchanged version is a no-op (it skips), so this never errors
-# on duplicates.
+# It runs on pushes to main AND on v* tags; whichever fires, it publishes only
+# if package.json's version isn't already on npm, else skips. Release either
+# way: bump "version", commit, push (optionally also push a matching tag).
+#
+# The `concurrency` group below serializes runs so that pushing a commit and its
+# tag together (two triggers, same version) can't race each other to publish and
+# collide with an E403 — the second run waits, then sees the version published
+# and skips.
 #
 # One-time setup on npmjs.com (dsh-hot-reload → Settings → Trusted Publisher):
 #   Organization or user: stuarthu
@@ -19,6 +23,10 @@ on:
   push:
     branches: [main]
     tags: ["v*"] # releases can also be cut by pushing a version tag
+
+concurrency:
+  group: publish-npm
+  cancel-in-progress: false # never cancel a publish mid-flight; queue instead
 
 jobs:
   publish:
@@ -37,17 +45,27 @@ jobs:
       - name: Ensure npm supports trusted publishing
         run: npm install -g npm@latest # needs >= 11.5.1
 
-      - name: Skip if this version is already published
+      - name: Decide whether to publish
         id: guard
         run: |
           NAME=$(node -p "require('./package.json').name")
           VERSION=$(node -p "require('./package.json').version")
-          if npm view "$NAME@$VERSION" version >/dev/null 2>&1; then
+          set +e
+          OUT=$(npm view "$NAME@$VERSION" version 2>&1)
+          CODE=$?
+          set -e
+          if [ $CODE -eq 0 ] && [ -n "$OUT" ]; then
             echo "$NAME@$VERSION is already on npm — nothing to publish."
             echo "publish=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "$NAME@$VERSION is new — will publish."
+          elif printf '%s' "$OUT" | grep -q "E404"; then
+            echo "$NAME@$VERSION not found (E404) — will publish."
             echo "publish=true" >> "$GITHUB_OUTPUT"
+          else
+            # Non-404 failure (network / registry 5xx / auth): fail safe by NOT
+            # publishing, rather than guessing the version is new.
+            echo "npm view failed for a non-404 reason — skipping publish this run:"
+            printf '%s\n' "$OUT"
+            echo "publish=false" >> "$GITHUB_OUTPUT"
           fi
 
       # No NODE_AUTH_TOKEN: the npm CLI authenticates via the OIDC credential
