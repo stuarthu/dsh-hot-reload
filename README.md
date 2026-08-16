@@ -74,6 +74,11 @@ as `tui`, still gets the terminal line and the log.
 Messages are not saved. If no browser tab is open when a reload happens, that
 message is gone. The log still has the record.
 
+If you restart dsh with a tab open, the tab opens a new channel by itself and
+pop-ups keep working. It tries for about three minutes. If it still cannot
+connect after that, it writes one line to the browser console and stops trying;
+reload the page to start again.
+
 ### If you want every line in your terminal
 
 The terminal line above only covers reloads that worked. To see everything this

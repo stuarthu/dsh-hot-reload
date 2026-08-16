@@ -3,6 +3,37 @@
 All notable changes to `dsh-hot-reload` are documented here. This project
 follows [semantic versioning](https://semver.org/).
 
+## Unreleased
+
+Code-review fixes to the 0.2.0 notification surfaces. No config or API changes,
+and detection and reloading are untouched.
+
+- **The pop-ups come back on their own after dsh restarts.** A browser tab whose
+  message channel closed for good used to stay silent until you reloaded the
+  page. This was easy to hit: the web server opens its socket before this plugin
+  adds its route, so a tab retrying in that gap got the web app's HTML instead of
+  a message channel, which the browser treats as a permanent failure. The tab now
+  opens a new channel after 1s, 2s, 4s, 8s, 16s, then every 30s, up to ten tries
+  (about three minutes). If all ten fail it says so in the console and stops, so
+  a profile that simply has no host half does not knock at the door forever. Each
+  successful connect gives the next outage a fresh set of tries.
+- **A broken `ctx.inject` can no longer stop dsh from starting.** Setting up the
+  message channel now runs last and inside a `try`. Before, it ran before the
+  file watcher and was the one unguarded call on that path: if a future cordis
+  changed `ctx.inject`, `apply()` would throw, dsh's start-up check would refuse
+  to boot, and the watcher would never have been created — losing reloading over
+  a feature that only reports on it.
+- **A `HEAD` request no longer hangs.** `HEAD` was answered with a never-ending
+  message stream, but Node throws away a `HEAD` body, so the caller waited until
+  its own timeout while its connection sat in the plugin's list of subscribers
+  collecting writes nobody would read. Health checks and link pre-fetchers do
+  send `HEAD`. It now gets the headers and a clean close.
+- **"No running copy to swap out" is announced once per version, not forever.**
+  That case is deliberately left uncommitted so a plugin that was merely still
+  starting gets picked up later — which meant every later lockfile write, even
+  for a completely unrelated package, showed the same pop-up again with no way to
+  dismiss it. The retry is unchanged; only the repeat announcing is dropped.
+
 ## 0.2.0
 
 You can now see reload results without reading the logs. Config did not change:
