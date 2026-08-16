@@ -18,6 +18,7 @@ name: Publish to npm
 on:
   push:
     branches: [main]
+    tags: ["v*"] # releases can also be cut by pushing a version tag
 
 jobs:
   publish:

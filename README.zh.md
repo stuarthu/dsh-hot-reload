@@ -36,6 +36,17 @@ dsh plugin --profile web add dsh-hot-reload
 dsh plugin --profile web add some-plugin@newer   # 自动热重载
 ```
 
+适用于**任意 profile**——把 `web` 换成你用的 profile 即可；它监听自己被加载进的
+那个 profile。
+
+## 兼容性
+
+基于并测试于 **dsh `0.1.0-rc.6`**（Node 22 / 24）。它会用到与 `cordis-plugin-hmr`
+共享的 cordis/loader 内部（`loader.internal.loadCache`、`registry.plugin`/
+`delete`、`fiber.entry`），因此未来若某个 dsh 版本改动了这些内部，可能需要更新
+本插件。它是失败安全的：一旦所需内部不可用，会退化为报告“需要重启”，而不会
+弄坏 dsh。
+
 ## 退出热重载（opt-out）
 
 某个插件若知道自己不适合热重载，可在其**自己的** `package.json` 里声明，强制走

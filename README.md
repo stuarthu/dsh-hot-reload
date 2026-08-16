@@ -41,6 +41,18 @@ apply live:
 dsh plugin --profile web add some-plugin@newer   # reloaded automatically
 ```
 
+Works in **any profile** — swap `web` for whichever profile you use; it watches
+the profile it's loaded into.
+
+## Compatibility
+
+Built and tested against **dsh `0.1.0-rc.6`** (Node 22 / 24). It reaches into
+cordis/loader internals shared with `cordis-plugin-hmr`
+(`loader.internal.loadCache`, `registry.plugin`/`delete`, `fiber.entry`), so a
+future dsh that changes those may require an update. It fails safe: if the
+internals it needs are missing, it degrades to reporting "restart needed" rather
+than breaking dsh.
+
 ## Opting out
 
 A plugin that knows it isn't safe to hot-reload can force the restart-needed
