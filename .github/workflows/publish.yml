@@ -1,13 +1,19 @@
 name: Publish to npm
 
-# Fully automatic publishing — no manual step. On every push to main, CI checks
-# whether package.json's version is already on npm; if not, it publishes. So a
-# release is just: bump "version" in package.json, commit, push. Re-running on an
-# unchanged version is a no-op (it skips), so this never errors on duplicates.
+# Fully automatic publishing via npm Trusted Publishing (OIDC) — no NPM_TOKEN.
+# On every push to main, CI checks whether package.json's version is already on
+# npm; if not, it publishes. Releasing is just: bump "version", commit, push.
+# Re-running on an unchanged version is a no-op (it skips), so this never errors
+# on duplicates.
 #
-# Auth: the NPM_TOKEN repo secret (an npm Automation token — 2FA-exempt, works in
-# CI). Provenance is attested via GitHub OIDC (id-token: write). Runs on
-# GitHub-hosted runners; no self-hosted runner needed.
+# One-time setup on npmjs.com (dsh-hot-reload → Settings → Trusted Publisher):
+#   Organization or user: stuarthu
+#   Repository:           dsh-hot-reload
+#   Workflow filename:    publish.yml
+#   Allowed action:       npm publish
+# Auth is a short-lived OIDC token minted per run (id-token: write); the npm CLI
+# detects and uses it automatically — no secret to store or rotate.
+# (Trusted publishing needs npm >= 11.5.1 and Node >= 22.14.0, ensured below.)
 
 on:
   push:
@@ -18,14 +24,17 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      id-token: write # for npm provenance attestation
+      id-token: write # required for OIDC trusted publishing (and provenance)
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-node@v4
         with:
-          node-version: "22"
+          node-version: "24" # trusted publishing needs Node >= 22.14.0
           registry-url: "https://registry.npmjs.org"
+
+      - name: Ensure npm supports trusted publishing
+        run: npm install -g npm@latest # needs >= 11.5.1
 
       - name: Skip if this version is already published
         id: guard
@@ -40,8 +49,9 @@ jobs:
             echo "publish=true" >> "$GITHUB_OUTPUT"
           fi
 
+      # No NODE_AUTH_TOKEN: the npm CLI authenticates via the OIDC credential
+      # granted by `id-token: write`, verified against the trusted publisher
+      # configured on npmjs.com.
       - name: Publish
         if: steps.guard.outputs.publish == 'true'
         run: npm publish --provenance --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
