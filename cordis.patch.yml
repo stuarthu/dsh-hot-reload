@@ -1,0 +1,17 @@
+# dsh-hot-reload bundle patch — mounts the watcher plugin that live-reloads
+# upgraded plugin packages without restarting dsh.
+#
+# Behavior: on a plugin package change it either hot-reloads the plugin in
+# place (if judged safe) or logs that a manual `dsh` restart is needed (if not).
+# It never restarts dsh itself. See README.md for the full safety model.
+- insert:
+    - id: hot-reload
+      name: 'dsh-hot-reload'
+      # config:
+      #   # Extra package names you personally vouch are safe to hot-reload,
+      #   # even if they don't declare `dsh.hotReload: true` themselves.
+      #   reloadable: []
+      #   # Debounce (ms) after a lockfile change before acting.
+      #   debounce: 300
+      #   # Absolute path to the profile dir to watch; auto-detected if omitted.
+      #   profileDir: ''

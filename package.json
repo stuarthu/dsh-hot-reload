@@ -1,0 +1,48 @@
+{
+  "name": "dsh-hot-reload",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Live-reload upgraded DeepSeek Harness (dsh) plugins without restarting dsh — safe plugins are hot-reloaded in place; unsafe ones are flagged for a manual restart.",
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek-harness",
+    "deepseek-harness-plugin",
+    "hot-reload",
+    "hmr",
+    "reload",
+    "cordis"
+  ],
+  "license": "MIT",
+  "author": "Stuart Hu",
+  "homepage": "https://github.com/stuarthu/dsh-hot-reload#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/stuarthu/dsh-hot-reload.git"
+  },
+  "bugs": {
+    "url": "https://github.com/stuarthu/dsh-hot-reload/issues"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "cordis.patch.yml",
+    "README.md",
+    "LICENSE"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "dependencies": {
+    "chokidar": "^4.0.0"
+  }
+}
