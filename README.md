@@ -1,5 +1,7 @@
 # dsh-hot-reload
 
+English | [中文](README.zh.md)
+
 Live-reload upgraded [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (dsh) plugins **without restarting dsh**.
 
 dsh's built-in hot-reload (`cordis-plugin-hmr`) deliberately ignores

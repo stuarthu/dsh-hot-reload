@@ -1,6 +1,6 @@
 {
   "name": "dsh-hot-reload",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "type": "module",
   "description": "Live-reload upgraded DeepSeek Harness (dsh) plugins without restarting dsh — safe plugins are hot-reloaded in place; unsafe ones are flagged for a manual restart.",
   "keywords": [
@@ -35,6 +35,7 @@
     "lib",
     "cordis.patch.yml",
     "README.md",
+    "README.zh.md",
     "LICENSE"
   ],
   "dsh": {
