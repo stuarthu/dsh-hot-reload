@@ -36,8 +36,10 @@ Two cases produce no reload, by design:
   new code anyway.
 - **A plugin that has no live fiber *yet*** (still importing, or it failed to
   load earlier) is reported as `no live fiber to reload right now` and left
-  alone. Nothing was torn down, so this one *is* re-examined on the next
-  lockfile change — if it keeps repeating, restart dsh.
+  alone. Nothing was torn down, so this one *is* re-examined on every later
+  lockfile change, and it reloads by itself as soon as a running copy appears.
+  You are told **once per version**, not once per check — so if you still see
+  the same version reported after the plugin has had time to start, restart dsh.
 
 It **never restarts dsh for you** — restarting is left to you (and your
 supervisor, if any).
@@ -63,6 +65,11 @@ old code is still running:
 - the plugin has no running copy to swap out
 - the plugin turned off hot reload with `dsh.hotReload: false`
 - dsh did not provide the internal parts the reload needs
+
+The second case is announced **once per version**, not once per check. That case
+is retried on every later lockfile write — including writes for other packages —
+so without this limit you would get the same pop-up over and over, with no way
+to dismiss it. The other three are announced each time they happen.
 
 The message slides in, stays a few seconds, then fades out. If one upgrade
 reloads several plugins, the messages line up and show one after another.
@@ -130,6 +137,7 @@ future dsh that changes any of them may require an update:
 |---|---|
 | `loader.internal.loadCache` | invalidating the ESM module cache |
 | `loader.internal.resolve` / `resolveSync` | resolving a specifier to a URL (dispatched on `internal.version`) |
+| `loader.import` / `loader.unwrapExports` | re-importing the fresh module and unwrapping its plugin export |
 | `registry.plugin` / `registry.delete` | swapping the plugin instance |
 | `fiber.entry`, `fiber.runtime` | re-attaching the new plugin to the running rows |
 | `entry.disabled` | skipping disabled rows (inherited getter) |
@@ -197,6 +205,16 @@ live fiber to swap). It does **not** detect *silent* leaks:
   [Compatibility](#compatibility). If they are unavailable (no
   `--expose-internals` and no `node-addon-require-builtin` addon), the plugin
   degrades to reporting "restart needed" for every change instead of reloading.
+- The lockfile is only the **trigger**. Version numbers are read from each
+  package's installed `package.json`, because that is the only file that says
+  what an import would really get. On pnpm 11 (measured on 11.21.0) the files on
+  disk are written **first** and the lockfile **last**, so by the time this
+  plugin acts, the versions it reads have settled. But nothing here *checks*
+  that. If some future pnpm wrote the lockfile first, a check could read the old
+  version, skip it, and never look again — the lockfile is the only thing
+  watched, so that upgrade would be missed **silently**, with no message, until
+  you install another version or restart dsh. The `debounce` setting does not
+  help: the gap measured 2.5–4 seconds, far longer than any sane debounce.
 - The message channel (`GET /dsh-hot-reload/events`) has **no password check**,
   the same as dsh's own `/plugins/events`. It sends plugin names and version
   numbers. dsh already shows those through its plugin list, so this adds no new

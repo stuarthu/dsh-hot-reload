@@ -34,6 +34,19 @@ and detection and reloading are untouched.
   for a completely unrelated package, showed the same pop-up again with no way to
   dismiss it. The retry is unchanged; only the repeat announcing is dropped.
 
+**Docs**
+
+- The README told you to watch for the "no running copy" message *repeating* as
+  your sign to restart dsh. It no longer repeats, so that advice was pointing at
+  a signal that never comes. Both READMEs now say what to watch instead.
+- **New limitation written down: the lockfile is only a trigger.** Version
+  numbers come from each package's installed `package.json`. On pnpm 11 the
+  files on disk are written before the lockfile, so what this plugin reads has
+  settled — but nothing checks that. A future pnpm that wrote the lockfile first
+  could make an upgrade be missed silently. This was a known gap; it was only
+  ever recorded in the repo's internal notes, and one of those notes had the
+  write order backwards.
+
 ## 0.2.0
 
 You can now see reload results without reading the logs. Config did not change:

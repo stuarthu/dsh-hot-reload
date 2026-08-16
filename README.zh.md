@@ -30,8 +30,10 @@ dsh 自带的热重载（`cordis-plugin-hmr`）刻意忽略 `node_modules`，所
 - **已禁用（disabled）的插件行会被静默跳过。** 已禁用的插件本就没在运行，没有
   可替换的对象；重新启用时 dsh 自然会加载新代码。
 - **尚未挂上 fiber 的插件**（仍在导入中，或此前加载失败）会被报告为
-  `no live fiber to reload right now` 并原样保留。由于什么都没有被拆除，这种
-  情况**会**在下次 lockfile 变化时重新检查；若反复出现，请重启 dsh。
+  `no live fiber to reload right now` 并原样保留。由于什么都没有被拆除，之后
+  每次 lockfile 变化都**会**重新检查它；一旦出现正在运行的副本，它会自己完成
+  重载。提示是**每个版本只给一次**，不是每次检查都给——所以，如果该插件已有
+  足够时间启动，你却仍看到同一个版本被报告，请重启 dsh。
 
 它**绝不会替你重启 dsh**——重启交给你（以及你的守护进程，如果有的话）。
 
@@ -53,6 +55,10 @@ dsh-hot-reload: hot-reloaded some-plugin@1.2.0 (1 module(s))
 - 该插件没有正在运行的副本可供替换
 - 该插件用 `dsh.hotReload: false` 关闭了热重载
 - dsh 没有提供重载所需的内部接口
+
+其中第二种情况是**每个版本只提示一次**，而不是每次检查都提示。这种情况在此后
+每次 lockfile 写入时都会重试——包括为别的包发生的写入——所以若不加这个限制，
+同一条提示会反复出现，而且没有办法关掉它。另外三种情况每次发生都会提示。
 
 提示会滑入，停留数秒，然后淡出。如果一次升级重载了多个插件，提示会排队逐条显示。
 
@@ -115,6 +121,7 @@ dsh plugin --profile web add some-plugin@newer   # 自动热重载
 |---|---|
 | `loader.internal.loadCache` | 使 ESM 模块缓存失效 |
 | `loader.internal.resolve` / `resolveSync` | 把 specifier 解析为 URL（按 `internal.version` 分派） |
+| `loader.import` / `loader.unwrapExports` | 重新导入新模块，并取出其中的插件导出 |
 | `registry.plugin` / `registry.delete` | 替换插件实例 |
 | `fiber.entry`、`fiber.runtime` | 把新插件重新挂到运行中的行上 |
 | `entry.disabled` | 跳过已禁用的行（继承式 getter） |
@@ -173,6 +180,13 @@ web 应用里的提示（且仅这一部分）还用到：
 - 重载路径依赖[兼容性](#兼容性)一节列出的 cordis/loader 内部接口。若这些内部
   不可用（既无 `--expose-internals`，也无 `node-addon-require-builtin` 原生
   插件），本插件会退化为对每次变化只报告“需要重启”，而不做重载。
+- lockfile 只是**触发器**。版本号是从每个包已安装的 `package.json` 读取的，因为
+  只有这个文件才说明一次 import 实际会拿到什么。在 pnpm 11 上（实测 11.21.0），
+  磁盘上的文件**先**写、lockfile **最后**写，所以本插件动作时读到的版本已经稳定。
+  但插件并不会去*核实*这一点。如果将来某个 pnpm 版本改成先写 lockfile，一次检查
+  就可能读到旧版本、跳过它，而且不再回头看——被监听的只有 lockfile，那次升级就会
+  被**静默**漏掉，不给任何提示，直到你安装另一个版本或重启 dsh。`debounce` 帮不上
+  忙：实测这个间隔有 2.5–4 秒，远超任何合理的 debounce 取值。
 - 提示通道（`GET /dsh-hot-reload/events`）**不做任何密码校验**，与 dsh 自带的
   `/plugins/events` 相同。它发送的是插件名和版本号。dsh 的插件列表本来就会显示
   这些内容，所以并没有多暴露什么秘密。但如果你把 dsh 绑定到 `0.0.0.0`，请把它
