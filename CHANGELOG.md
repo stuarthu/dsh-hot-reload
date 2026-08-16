@@ -3,10 +3,12 @@
 All notable changes to `dsh-hot-reload` are documented here. This project
 follows [semantic versioning](https://semver.org/).
 
-## Unreleased
+## 0.2.1
 
 Code-review fixes to the 0.2.0 notification surfaces. No config or API changes,
 and detection and reloading are untouched.
+
+**Fixes**
 
 - **The pop-ups come back on their own after dsh restarts.** A browser tab whose
   message channel closed for good used to stay silent until you reloaded the
