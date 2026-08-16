@@ -3,6 +3,50 @@
 All notable changes to `dsh-hot-reload` are documented here. This project
 follows [semantic versioning](https://semver.org/).
 
+## 0.2.0
+
+You can now see reload results without reading the logs. Config did not change:
+`debounce` and `profileDir` are still the only keys. Detection and reloading did
+not change either.
+
+**New messages**
+
+- **One terminal line for each reload that worked.** dsh never prints its log to
+  the terminal, so until now nothing this plugin wrote showed up there. A
+  successful reload now also writes one line. This works in every profile.
+- **A short pop-up message in the dsh web app.** You get one when a reload works,
+  and one in every case that leaves the old code running: a reload that failed
+  and was rolled back, a plugin with no running copy, `dsh.hotReload: false`, and
+  missing loader internals. If one upgrade reloads several plugins, the messages
+  show one after another.
+- The web part ships as `lib/client.js` (`exports["./client"]`, plus `dsh.client`
+  with `platform: "web"`) and attaches to the `shell.overlay` slot. It is written
+  by hand in the format the browser loader expects, so this package still has
+  **no build step** and **no new dependencies**. `react` and
+  `@deepseek-ai/dsh-client-ui-primitives` come from the web app's own modules.
+- Messages travel over a `GET /dsh-hot-reload/events` route added to
+  `ctx.webServer`. Nothing is saved: if no browser is connected, the message is
+  gone. The log is still the lasting record.
+- One `report()` call now writes the log line, the terminal line, and the browser
+  message from a single message string, so those surfaces cannot disagree.
+
+**When parts are missing**
+
+- The route is added through `ctx.inject(["webServer"], …)`. A top-level `inject`
+  would have made the whole plugin wait forever in a profile with no web server,
+  because cordis treats every injected name as required — `tui` would have
+  stopped reloading anything. A single `ctx.get` call would have been unreliable:
+  it only returns a service once that service is fully started, and the web
+  server starts later, after it opens its socket. It would also never recover if
+  the web server were replaced. `ctx.inject` only makes a small child part wait,
+  and it registers the route again each time the web server is replaced.
+- A missing web server, a repeated route, a renamed slot, a browser module that
+  no longer loads, or a dsh build without `Toast` each cost you the pop-up only.
+  Reloading still works and the web app still starts.
+- If the message channel cannot be reached at all, the browser half says so once
+  in the console instead of staying quiet. Otherwise a dead channel looks exactly
+  like "no reloads have happened yet".
+
 ## 0.1.4
 
 Two rounds of code-review fixes (engine + CI). No config or API changes.

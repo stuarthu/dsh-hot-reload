@@ -1,6 +1,6 @@
 {
   "name": "dsh-hot-reload",
-  "version": "0.1.4",
+  "version": "0.2.0",
   "type": "module",
   "description": "Live-reload upgraded DeepSeek Harness (dsh) plugins without restarting dsh \u2014 the running plugin is swapped in place, and a reload that fails rolls back to the working old version and asks for a manual restart.",
   "keywords": [
@@ -29,6 +29,7 @@
   "main": "lib/index.js",
   "exports": {
     ".": "./lib/index.js",
+    "./client": "./lib/client.js",
     "./package.json": "./package.json"
   },
   "files": [
@@ -42,6 +43,9 @@
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web"
     }
   },
   "dependencies": {

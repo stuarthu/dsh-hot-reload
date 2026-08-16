@@ -35,6 +35,57 @@ dsh 自带的热重载（`cordis-plugin-hmr`）刻意忽略 `node_modules`，所
 
 它**绝不会替你重启 dsh**——重启交给你（以及你的守护进程，如果有的话）。
 
+## 你如何知道发生了什么
+
+插件会把每个结果写进 dsh 的日志。但 dsh 不会把日志打印到你的终端，所以这些内容
+很容易被忽略。另有两个地方会告诉你发生了什么。
+
+**1. 每次重载成功，在你的终端里输出一行。** 任意 profile 都有：
+
+```
+dsh-hot-reload: hot-reloaded some-plugin@1.2.0 (1 module(s))
+```
+
+**2. dsh web 应用里的一条短提示。** 重载成功时会出现一条。凡是新代码*没有*加载、
+旧代码仍在运行的情况，也都会出现一条：
+
+- 重载失败，已换回旧版本
+- 该插件没有正在运行的副本可供替换
+- 该插件用 `dsh.hotReload: false` 关闭了热重载
+- dsh 没有提供重载所需的内部接口
+
+提示会滑入，停留数秒，然后淡出。如果一次升级重载了多个插件，提示会排队逐条显示。
+
+web 那一部分只在运行 web 服务器的 profile 中加载，并通过
+`GET /dsh-hot-reload/events` 发送提示。没有 web 服务器的 profile（例如 `tui`）
+仍然有终端那一行和日志。
+
+提示不会被保存。如果重载发生时没有打开任何浏览器标签页，那条提示就没有了。
+日志里仍有记录。
+
+### 如果你想在终端里看到全部内容
+
+上面那一行只覆盖成功的重载。若想看到本插件写进日志的全部内容（包括失败），请把
+dsh 的控制台日志插件加进你的 profile。它是一个独立的包：
+
+```sh
+dsh plugin --profile web add @deepseek-ai/cordis-plugin-logger-console
+```
+
+然后在该 profile 的 `cordis.patch.yml` 中加入一行，并重启 dsh：
+
+```yaml
+- insert:
+    - id: logger-console
+      name: '@deepseek-ai/cordis-plugin-logger-console'
+```
+
+这会打印 dsh 的所有日志，而不只是本插件的。
+
+> **全屏界面 profile 的注意事项。** 终端那一行是直接写到屏幕上的。在绘制全屏
+> 界面的 profile（例如 `tui`）中，这一行可能落在画面中间，让屏幕看起来乱掉。
+> 这只会持续到屏幕下一次重绘为止。
+
 ## 安装
 
 ```sh
@@ -65,7 +116,23 @@ dsh plugin --profile web add some-plugin@newer   # 自动热重载
 | `entry.disabled` | 跳过已禁用的行（继承式 getter） |
 | `entry.options.group` | 跳过 group 容器行 |
 
-它是失败安全的：一旦所需内部不可用，会退化为报告“需要重启”，而不会弄坏 dsh。
+web 应用里的提示（且仅这一部分）还用到：
+
+| dsh 的部件 | 用途 |
+|---|---|
+| `ctx.webServer.register` | 提供提示通道 |
+| `window.__ModuleLoader__` | 加载浏览器侧那一半 |
+| `shell.overlay` 插槽 | 把提示放到应用之上 |
+| `@deepseek-ai/dsh-client-ui-primitives` 的 `Toast` | 绘制提示 |
+
+本插件是失败安全的。若所需部件缺失，它会报告“需要重启”，而不会弄坏 dsh。提示
+也一样：缺少 web 服务器、浏览器模块加载不了、插槽名未知、重复注册、或 dsh 构建
+中没有 `Toast`，代价都只是没有提示。重载照常工作，web 应用也照常启动。
+
+有一个例外：浏览器侧那一半会向 dsh 索取名为 `slots` 的服务。只要有任何插件始终
+没有就绪，dsh 的 web 应用就会拒绝启动。所以，假如将来某个 dsh 构建完全没有
+`slots` 服务，这一部分就会一直等待，并出现在 dsh 的启动错误列表里。上面列出的
+其他失败都会被捕获，只是什么都不做。
 
 ## 退出热重载（opt-out）
 
@@ -102,6 +169,10 @@ dsh plugin --profile web add some-plugin@newer   # 自动热重载
 - 重载路径依赖[兼容性](#兼容性)一节列出的 cordis/loader 内部接口。若这些内部
   不可用（既无 `--expose-internals`，也无 `node-addon-require-builtin` 原生
   插件），本插件会退化为对每次变化只报告“需要重启”，而不做重载。
+- 提示通道（`GET /dsh-hot-reload/events`）**不做任何密码校验**，与 dsh 自带的
+  `/plugins/events` 相同。它发送的是插件名和版本号。dsh 的插件列表本来就会显示
+  这些内容，所以并没有多暴露什么秘密。但如果你把 dsh 绑定到 `0.0.0.0`，请把它
+  算作局域网里任何人都能打开的又一个地址。
 
 范围说明：本插件处理的是**已加载插件的升级**。安装一个**全新**插件是另一回事
 （把它的行加入 `cordis.patch.yml`，这个 dsh 本身已经会热应用）。
