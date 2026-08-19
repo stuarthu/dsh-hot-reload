@@ -3,6 +3,25 @@
 All notable changes to `dsh-hot-reload` are documented here. This project
 follows [semantic versioning](https://semver.org/).
 
+## 0.2.2
+
+Reloads now re-import a plugin's whole package, not just its entry module.
+Config and API unchanged.
+
+**Fixes**
+
+- **Multi-file plugins reload as one unit.** The reload used to invalidate only
+  the entry URL and re-import it. Under a hoisted linker (`nodeLinker: hoisted`)
+  a version bump rewrites the package's files in place, so the entry's relative
+  imports (`./routes.js` and friends) resolved to the same URLs and hit the
+  stale cache — the running plugin mixed new entry code with old dependency code,
+  which for a plugin like `dshmarket` surfaced as a crash looking for a file the
+  new version had deleted. The reload now invalidates every cached module under
+  the package's own directory (in both the ESM `loadCache` and the CJS
+  `require.cache`) before re-importing, so the entry and its in-package imports
+  come back together. Shared dependencies live outside that directory and are
+  left alone.
+
 ## 0.2.1
 
 Code-review fixes to the 0.2.0 notification surfaces. No config or API changes,
