@@ -89,7 +89,7 @@ reload the page to start again.
 ### If you want every line in your terminal
 
 The terminal line above covers every reload outcome — reloaded, failed, and
-stale. To see everything else this plugin writes to the log (its warnings and
+stale (not attempted — the old code is still running). To see everything else this plugin writes to the log (its warnings and
 diagnostics), add dsh's console logger to your profile. It is a separate
 package:
 
