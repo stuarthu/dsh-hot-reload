@@ -41,6 +41,27 @@ Two cases produce no reload, by design:
   You are told **once per version**, not once per check — so if you still see
   the same version reported after the plugin has had time to start, restart dsh.
 
+### Upgrading dsh-hot-reload itself
+
+`dsh-hot-reload` can hot-reload **itself** too. When its own package is
+upgraded, the running instance imports the new module, commits its own version
+and persists it, closes its watcher, and then swaps its own fiber in place. The
+new instance re-reads the state file and opens its own watcher — the old watcher
+is closed before the new one opens, so there is never more than one live watcher.
+
+To make that handoff — and a plain restart — safe, the plugin keeps its tracked
+state in a file: `profileDir/.dsh-hot-reload-state.json`. It holds the committed
+`versions`, the never-retried `failedVersions`, and the once-announced
+`noticedVersions`. The file is written **atomically** — a `.tmp` file is written
+and then renamed over the target, so a crash mid-write never leaves a truncated
+file — and read back at startup, so a fresh instance inherits what the previous
+one committed instead of treating already-loaded plugins as new and re-reloading
+them.
+
+This state file is **required**. If it cannot be written at startup, the plugin
+refuses to start (it throws) rather than running with in-memory-only state that
+a later self-reload or restart would lose.
+
 It **never restarts dsh for you** — restarting is left to you (and your
 supervisor, if any).
 
@@ -229,6 +250,11 @@ live fiber to swap). It does **not** detect *silent* leaks:
   the current version, so it reloads rather than adopting a version that may
   never have run. For an HMR-safe plugin this is a harmless single redundant
   reload.
+
+- The state file is **required**. The plugin writes its tracked state to
+  `profileDir/.dsh-hot-reload-state.json`. If that file cannot be written — for
+  example because the profile directory is read-only — the plugin refuses to
+  start (it throws) rather than running with in-memory-only state.
 
 Scope note: this handles **upgrades of already-loaded plugins**. Installing a
 *brand-new* plugin is a separate concern (adding its row to `cordis.patch.yml`,

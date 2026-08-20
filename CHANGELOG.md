@@ -3,6 +3,37 @@
 All notable changes to `dsh-hot-reload` are documented here. This project
 follows [semantic versioning](https://semver.org/).
 
+## 0.2.4
+
+`dsh-hot-reload` now hot-reloads itself when its own package is upgraded, and its
+tracked reload state now survives both a self-reload and a restart. Config and
+API unchanged: `debounce` and `profileDir` are still the only keys.
+
+**Added**
+
+- **The plugin now hot-reloads itself.** Upgrading `dsh-hot-reload` used to need
+  a manual dsh restart, because the running instance was the one doing the
+  swapping. Now the running instance imports the new module, commits its own
+  version and persists it, closes its watcher, and then swaps its own fiber in
+  place. The new `apply()` re-reads state and opens its own watcher — the old
+  watcher is closed before the new one opens, so there is never more than one
+  live watcher.
+- **Reload state is persisted to a file.** `versions` / `failedVersions` /
+  `noticedVersions` are now written to `profileDir/.dsh-hot-reload-state.json`
+  and read back at startup, so a fresh instance inherits the versions the
+  previous one committed instead of treating already-loaded plugins as new and
+  spuriously re-reloading them. The file is written **atomically** — a `.tmp`
+  file is written and then renamed over the target, so a crash mid-write never
+  leaves a truncated file.
+
+**Changed**
+
+- **An unwritable state file now stops the plugin from starting.** Previously
+  that state lived only in memory and was lost on a self-reload or restart. If
+  the state file cannot be written at startup, `apply()` now throws instead of
+  running with in-memory-only state that a later self-reload or restart would
+  lose.
+
 ## 0.2.3
 
 A plugin that loads after `dsh-hot-reload` in the bundle order is now reloaded
