@@ -19,7 +19,7 @@ There are no tests, no linter, and no build step in the repo — the published `
 - **Rollback**: the reload is optimistic. `fiber.await()` surfaces sync *and async* `apply()` startup errors into the try/catch; on failure the old plugin is re-instantiated, so a failed reload never leaves a dead plugin — just a logged "restart dsh" notice.
 - **Fail-safe degradation** is a design invariant: missing `loader.internal`, unresolvable profile dir, opt-out (`dsh.hotReload: false` in the target plugin's package.json) — all degrade to logging "restart needed", never to crashing dsh.
 
-- **Notifications**: `report(kind, message)` is the single outcome seam. From one message it writes the `ctx.logger` line (level chosen by `kind`), a stderr line when `kind` is `"reloaded"`, and an SSE frame to `GET /dsh-hot-reload/events` for every kind. `lib/client.js` subscribes to that channel and renders the shipped `Toast` into the `shell.overlay` slot. stderr exists because dsh's host registers no cordis logger exporter, so nothing logged reaches the terminal. Fire and forget: nothing buffered, no cursor, no dismiss path.
+- **Notifications**: `report(kind, message)` is the single outcome seam. From one message it writes the `ctx.logger` line (level chosen by `kind`), a stderr line for every kind, and an SSE frame to `GET /dsh-hot-reload/events` for every kind. `lib/client.js` subscribes to that channel and renders the shipped `Toast` into the `shell.overlay` slot. stderr exists because dsh's host registers no cordis logger exporter, so nothing logged reaches the terminal. Fire and forget: nothing buffered, no cursor, no dismiss path.
 
 Invariants worth preserving when editing:
 

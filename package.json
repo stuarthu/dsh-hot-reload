@@ -1,6 +1,6 @@
 {
   "name": "dsh-hot-reload",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "type": "module",
   "description": "Live-reload upgraded DeepSeek Harness (dsh) plugins without restarting dsh \u2014 the running plugin is swapped in place, and a reload that fails rolls back to the working old version and asks for a manual restart.",
   "keywords": [

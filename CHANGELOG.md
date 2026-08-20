@@ -3,6 +3,27 @@
 All notable changes to `dsh-hot-reload` are documented here. This project
 follows [semantic versioning](https://semver.org/).
 
+## 0.2.3
+
+A plugin that loads after `dsh-hot-reload` in the bundle order is now reloaded
+when it is upgraded, and every reload outcome — not just successes — reaches the
+terminal. Config and API unchanged.
+
+**Fixes**
+
+- **A plugin loaded after this one now hot-reloads when upgraded.** A first-seen
+  package used to be adopted at face value whatever its version, so a plugin that
+  appears later in the bundle order (for example `dsh-crew`) kept running old
+  code when it had already been upgraded before this plugin's first cycle — the
+  change was silently missed. A first-seen package that has a live fiber is now
+  reloaded instead of adopted; a first-seen package with no live fiber is still
+  adopted, because there is nothing running to replace.
+- **Every outcome now reaches the terminal.** `report()` used to write its stderr
+  line only for a successful reload. A failed or stale reload was then visible
+  only as a transient pop-up and a log line dsh never prints, so the "restart
+  dsh" instruction never reached anyone watching the terminal. stderr is now
+  written for every outcome — reloaded, failed, and stale.
+
 ## 0.2.2
 
 Reloads now re-import a plugin's whole package, not just its entry module.

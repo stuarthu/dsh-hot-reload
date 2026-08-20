@@ -50,7 +50,7 @@ The plugin writes every result to dsh's log. But dsh does not print its log to
 your terminal, so those lines are easy to miss. Two extra places show you what
 happened.
 
-**1. One line in your terminal, for each reload that worked.** You get this in
+**1. One line in your terminal, for every outcome.** You get this in
 every profile:
 
 ```
@@ -88,9 +88,10 @@ reload the page to start again.
 
 ### If you want every line in your terminal
 
-The terminal line above only covers reloads that worked. To see everything this
-plugin writes to the log, including failures, add dsh's console logger to your
-profile. It is a separate package:
+The terminal line above covers every reload outcome — reloaded, failed, and
+stale. To see everything else this plugin writes to the log (its warnings and
+diagnostics), add dsh's console logger to your profile. It is a separate
+package:
 
 ```sh
 dsh plugin --profile web add @deepseek-ai/cordis-plugin-logger-console
@@ -220,6 +221,14 @@ live fiber to swap). It does **not** detect *silent* leaks:
   numbers. dsh already shows those through its plugin list, so this adds no new
   secret. But if you bind dsh to `0.0.0.0`, count it as one more address that
   anyone on your network can open.
+
+- A plugin that loads **after** `dsh-hot-reload` in the bundle order is reloaded
+  once — to its current version — on the first lockfile write after boot, even
+  when that write was for an unrelated package. Until this plugin has tracked the
+  package across one cycle, it cannot tell whether the running code is the old or
+  the current version, so it reloads rather than adopting a version that may
+  never have run. For an HMR-safe plugin this is a harmless single redundant
+  reload.
 
 Scope note: this handles **upgrades of already-loaded plugins**. Installing a
 *brand-new* plugin is a separate concern (adding its row to `cordis.patch.yml`,
